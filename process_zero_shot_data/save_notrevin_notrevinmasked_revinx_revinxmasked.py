@@ -141,6 +141,8 @@ if __name__ == '__main__':
         pass
     elif 'saugeen' in args.data_path and args.data == 'saugeen' and args.enc_in == 1:
         pass
+    elif args.data == 'odometry' and args.enc_in == 13:
+        pass
     else:
         pdb.set_trace()
 

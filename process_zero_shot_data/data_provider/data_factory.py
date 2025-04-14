@@ -1,11 +1,11 @@
-from data_provider.data_loader import Dataset_Neuro, Dataset_Saugeen_Web
+from data_provider.data_loader import Dataset_Neuro, Dataset_Saugeen_Web, Dataset_Odometry
 from torch.utils.data import DataLoader
 
 data_dict = {
     'neuro': Dataset_Neuro,
     'saugeen': Dataset_Saugeen_Web,
+    'odometry': Dataset_Odometry,  
 }
-
 
 def data_provider(args, flag):
     Data = data_dict[args.data]

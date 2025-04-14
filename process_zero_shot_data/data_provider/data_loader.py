@@ -10,6 +10,92 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
+class Dataset_Odometry(Dataset):
+    def __init__(self, root_path, flag='train', size=None,
+                 features='S', data_path='odometry',
+                 target='OT', scale=True, timeenc=0, freq='h'):
+
+        # === Sequence sizes ===
+        if size is None:
+            self.seq_len = 96
+            self.label_len = 0
+            self.pred_len = 0
+        else:
+            self.seq_len = size[0]
+            self.label_len = size[1]
+            self.pred_len = size[2]
+
+        assert flag in ['train', 'val', 'test']
+        type_map = {'train': 0, 'val': 1, 'test': 2}
+        self.set_type = type_map[flag]
+
+        self.features = features
+        self.target = target
+        self.scale = scale
+        self.timeenc = timeenc
+        self.freq = freq
+
+        self.root_path = root_path
+        self.data_path = data_path
+
+        self.__read_data__()
+
+    def __read_data__(self):
+        self.scaler = StandardScaler()
+
+        train_data = np.load(os.path.join(self.root_path, 'train_data.npy'))
+        val_data = np.load(os.path.join(self.root_path, 'val_data.npy'))
+        test_data = np.load(os.path.join(self.root_path, 'test_data.npy'))
+
+        train_reshaped = train_data.reshape(-1, train_data.shape[-1])
+        val_reshaped = val_data.reshape(-1, val_data.shape[-1])
+        test_reshaped = test_data.reshape(-1, test_data.shape[-1])
+
+        if self.scale:
+            self.scaler.fit(train_reshaped)
+            train_scaled = self.scaler.transform(train_reshaped)
+            val_scaled = self.scaler.transform(val_reshaped)
+            test_scaled = self.scaler.transform(test_reshaped)
+
+        train_scaled = train_scaled.reshape(train_data.shape)
+        val_scaled = val_scaled.reshape(val_data.shape)
+        test_scaled = test_scaled.reshape(test_data.shape)
+
+        if self.set_type == 0:
+            x, y = self.make_full_x_y_data(train_scaled)
+        elif self.set_type == 1:
+            x, y = self.make_full_x_y_data(val_scaled)
+        else:
+            x, y = self.make_full_x_y_data(test_scaled)
+
+        self.data_x = x
+        self.data_y = y
+
+    def make_full_x_y_data(self, array):
+        data_x, data_y = [], []
+        for instance in range(array.shape[0]):
+            for t in range(array.shape[1]):
+                s_begin = t
+                s_end = s_begin + self.seq_len
+                r_begin = s_end - self.label_len
+                r_end = r_begin + self.label_len + self.pred_len
+                if r_end <= array.shape[1]:
+                    data_x.append(array[instance, s_begin:s_end, :])
+                    data_y.append(array[instance, r_begin:r_end, :])
+                else:
+                    break
+        return data_x, data_y
+
+    def __getitem__(self, index):
+        return self.data_x[index], self.data_y[index], 0, 0
+
+    def __len__(self):
+        return len(self.data_x)
+
+    def inverse_transform(self, data):
+        return self.scaler.inverse_transform(data)
+
+
 class Dataset_Neuro(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='ETTh1.csv',

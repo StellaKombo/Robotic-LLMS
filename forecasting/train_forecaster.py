@@ -15,27 +15,39 @@ from lib.utils.env import seed_all_rng
 def create_time_series_dataloader(datapath="/data", batchsize=8):
     dataloaders = {}
     for split in ["train", "val", "test"]:
+        print(f"\n🔍 Loading split: {split}")
+        
         # original time series
-        timex_file = os.path.join(datapath, "%s_x_original.npy" % split)
-
-        timex = np.load(timex_file)
-        timex = torch.from_numpy(timex).to(dtype=torch.float32)
-        timey_file = os.path.join(datapath, "%s_y_original.npy" % split)
-        timey = np.load(timey_file)
-        timey = torch.from_numpy(timey).to(dtype=torch.float32)
-
-        # x codes
-        codex_file = os.path.join(datapath, "%s_x_codes.npy" % (split))
-        codex = np.load(codex_file)
-        codex = torch.from_numpy(codex).to(dtype=torch.int64)
-
-        codey_oracle_file = os.path.join(datapath, "%s_y_codes_oracle.npy" % split)
+        timex_file = os.path.join(datapath, f"{split}_x_original.npy")
+        timey_file = os.path.join(datapath, f"{split}_y_original.npy")
+        codex_file = os.path.join(datapath, f"{split}_x_codes.npy")
+        codey_oracle_file = os.path.join(datapath, f"{split}_y_codes_oracle.npy")
         if not os.path.exists(codey_oracle_file):
-            codey_oracle_file = os.path.join(datapath, "%s_y_codes.npy" % split)
+            codey_oracle_file = os.path.join(datapath, f"{split}_y_codes.npy")
+
+        print(f"📂 timex_file: {timex_file}")
+        print(f"📂 timey_file: {timey_file}")
+        print(f"📂 codex_file: {codex_file}")
+        print(f"📂 codey_oracle_file: {codey_oracle_file}")
+
+        # Load and print shapes
+        timex = np.load(timex_file)
+        timey = np.load(timey_file)
+        codex = np.load(codex_file)
         codey_oracle = np.load(codey_oracle_file)
+
+        print(f"✅ timex shape: {timex.shape}")
+        print(f"✅ timey shape: {timey.shape}")
+        print(f"✅ codex shape: {codex.shape}")
+        print(f"✅ codey_oracle shape: {codey_oracle.shape}")
+
+        # Convert to torch tensors
+        timex = torch.from_numpy(timex).to(dtype=torch.float32)
+        timey = torch.from_numpy(timey).to(dtype=torch.float32)
+        codex = torch.from_numpy(codex).to(dtype=torch.int64)
         codey_oracle = torch.from_numpy(codey_oracle).to(dtype=torch.int64)
 
-        print("[Dataset][%s] %d of examples" % (split, timex.shape[0]))
+        print(f"[Dataset][{split}] {timex.shape[0]} examples")
 
         dataset = torch.utils.data.TensorDataset(timex, timey, codex, codey_oracle)
         dataloaders[split] = torch.utils.data.DataLoader(
@@ -101,6 +113,16 @@ def train_one_epoch(
         B, TCin, Sin = codeids_x.shape
         B, TCout, Sout = codeids_y_labels.shape
         Tout = TCout * compression
+        print(f"Expected Tout from args: {Tout}")
+        print(f"Actual y.shape: {y.shape}")
+        print(f"Computed TCout from codeids_y_labels: {TCout}")
+        print(f"Compression factor: {compression}")
+        print(f"TCout * compression = {TCout * compression}")
+
+        # Optional: print a few shapes for further clarity
+        print(f"x.shape: {x.shape}")
+        print(f"codeids_x.shape: {codeids_x.shape}")
+        print(f"codeids_y_labels.shape: {codeids_y_labels.shape}")
         assert Tout == y.shape[1], "%d" % (TCout)
 
         # get codewords for input x
@@ -388,6 +410,8 @@ def train(args):
             running_mse, running_mae, running_cor = 0.0, 0.0, 0.0
             total_num, total_num_c = 0.0, 0.0
             # Disable gradient computation and reduce memory consumption.
+            all_prediction_time = []
+            all_ground_truth_time = []
             with torch.no_grad():
                 for i, vdata in enumerate(val_dataloader):
                     pred_time = inference(
@@ -400,6 +424,16 @@ def train(args):
                         onehot=args.onehot,
                         scheme=args.scheme,
                     )
+
+                    labels_time = vdata[1]
+                    labels_time = labels_time.to(device)
+
+                    all_prediction_time.append(pred_time.detach().cpu().numpy())
+                    if i == 0:
+                        all_ground_truth_time = [labels_time.detach().cpu().numpy()]
+                    else:
+                        all_ground_truth_time.append(labels_time.detach().cpu().numpy())
+
                     labels_code = vdata[-1]
                     labels_code = labels_code.to(device)
                     labels_time = vdata[1]
@@ -411,6 +445,16 @@ def train(args):
                     total_num += labels_time.numel()  # B * S * T
                     total_num_c += labels_time.shape[0] * labels_time.shape[2]  # B * S
             running_mae = running_mae / total_num
+            np.save(
+                os.path.join(args.file_save_path, f"predictions_Tin{args.Tin}_Tout{args.Tout}_seed{args.seed}.npy"),
+                np.concatenate(all_prediction_time, axis=0)
+            )
+            np.save(
+                os.path.join(args.file_save_path, f"groundtruth_Tin{args.Tin}_Tout{args.Tout}_seed{args.seed}.npy"),
+                np.concatenate(all_ground_truth_time, axis=0)
+            )
+            print(f"✅ Saved predictions and ground truth to {args.file_save_path}")
+
             running_mse = running_mse / total_num
             running_cor = running_cor / total_num_c
             print(
@@ -490,6 +534,8 @@ def get_params(data_type, data_path):
         Sin = Sout = 321
         dataroot = data_path
 
+    
+
     elif data_type == "ETTh1":
         batchsize = 128
         Sin = Sout = 7
@@ -513,6 +559,11 @@ def get_params(data_type, data_path):
     elif data_type == "all":
         batchsize = 4096
         Sin = Sout = 1
+        dataroot = data_path
+
+    elif data_type == "odometry":
+        batchsize = 256
+        Sin = Sout = 13
         dataroot = data_path
 
     else:

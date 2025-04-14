@@ -133,16 +133,16 @@ if __name__ == '__main__':
     print('Traffic : 862')
     print('ETTm1, m2, h1, h2 : 7')
 
-    if 'electricity' in args.data_path and args.data == 'custom' and args.enc_in == 321:
-        pass
-    elif 'weather' in args.data_path and args.data == 'custom' and args.enc_in == 21:
-        pass
-    elif 'traffic' in args.data_path and args.data == 'custom' and args.enc_in == 862:
-        pass
-    elif 'ETT' in args.data and args.enc_in == 7:
-        pass
-    else:
-        pdb.set_trace()
+    #if 'electricity' in args.data_path and args.data == 'custom' and args.enc_in == 321:
+    #    pass
+    #elif 'weather' in args.data_path and args.data == 'custom' and args.enc_in == 21:
+    #    pass
+    #elif 'traffic' in args.data_path and args.data == 'custom' and args.enc_in == 862:
+    #    pass
+    #elif 'ETT' in args.data and args.enc_in == 7:
+    #    pass
+    #else:
+    #    pdb.set_trace()
 
     print('Args in experiment:')
     print(args)
