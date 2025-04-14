@@ -40,68 +40,59 @@ class ExtractData:
             batch_x = batch_x.float().to(self.device)
             batch_y = batch_y.float().to(self.device)
 
-            # REViN input: [bs, time, nvars]
+            # data going into revin should have dim:[bs x time x nvars]
             x_in_revin_space = self.revin_layer_x(batch_x, "norm")
-            x_codes, x_code_ids, codebook = time2codes(
-                x_in_revin_space.permute(0, 2, 1),
-                self.args.compression_factor,
-                vqvae_model.encoder,
-                vqvae_model.vq
-            )
-            x_code_ids_all.append(np.array(x_code_ids.detach().cpu()))
-            x_predictions_revin_space, x_predictions_original_space = codes2time(
-                x_code_ids, codebook,
-                self.args.compression_factor,
-                vqvae_model.decoder, self.revin_layer_x
-            )
-            x_reverted_all.append(np.array(x_predictions_original_space.detach().cpu()))
+            y_in_revin_space = self.revin_layer_y(batch_y, "norm")
 
-            # Only process Y if it's not empty (label_len > 0)
-            if batch_y.shape[1] > 0:
-                y_in_revin_space = self.revin_layer_y(batch_y, "norm")
-                y_codes, y_code_ids, codebook = time2codes(
-                    y_in_revin_space.permute(0, 2, 1),
-                    self.args.compression_factor,
-                    vqvae_model.encoder,
-                    vqvae_model.vq
-                )
-                y_code_ids_all.append(np.array(y_code_ids.detach().cpu()))
-                y_predictions_revin_space, y_predictions_original_space = codes2time(
-                    y_code_ids, codebook,
-                    self.args.compression_factor,
-                    vqvae_model.decoder, self.revin_layer_y
-                )
-                y_reverted_all.append(np.array(y_predictions_original_space.detach().cpu()))
-            else:
-                y_code_ids_all.append(np.empty((batch_y.shape[0], 0, batch_y.shape[2])))
-                y_reverted_all.append(np.empty((batch_y.shape[0], 0, batch_y.shape[2])))
+            # expects time to be dim [bs x nvars x time]
+            x_codes, x_code_ids, codebook = time2codes(x_in_revin_space.permute(0, 2, 1), self.args.compression_factor, vqvae_model.encoder, vqvae_model.vq)
+            y_codes, y_code_ids, codebook = time2codes(y_in_revin_space.permute(0, 2, 1), self.args.compression_factor, vqvae_model.encoder, vqvae_model.vq)
+
+            x_code_ids_all.append(np.array(x_code_ids.detach().cpu()))
+            y_code_ids_all.append(np.array(y_code_ids.detach().cpu()))
+
+            # expects code to be dim [bs x nvars x compressed_time]
+            x_predictions_revin_space, x_predictions_original_space = codes2time(x_code_ids, codebook, self.args.compression_factor, vqvae_model.decoder, self.revin_layer_x)
+            y_predictions_revin_space, y_predictions_original_space = codes2time(y_code_ids, codebook, self.args.compression_factor, vqvae_model.decoder, self.revin_layer_y)
+
+            x_reverted_all.append(np.array(x_predictions_original_space.detach().cpu()))
+            y_reverted_all.append(np.array(y_predictions_original_space.detach().cpu()))
 
         x_original_arr = np.concatenate(x_original_all, axis=0)
         y_original_arr = np.concatenate(y_original_all, axis=0)
+
         x_code_ids_all_arr = np.concatenate(x_code_ids_all, axis=0)
         y_code_ids_all_arr = np.concatenate(y_code_ids_all, axis=0)
+
         x_reverted_all_arr = np.concatenate(x_reverted_all, axis=0)
         y_reverted_all_arr = np.concatenate(y_reverted_all, axis=0)
 
-        data_dict = {
-            'x_original_arr': x_original_arr,
-            'y_original_arr': y_original_arr,
-            'x_code_ids_all_arr': np.swapaxes(x_code_ids_all_arr, 1, 2),
-            'y_code_ids_all_arr': np.swapaxes(y_code_ids_all_arr, 1, 2),
-            'x_reverted_all_arr': x_reverted_all_arr,
-            'y_reverted_all_arr': y_reverted_all_arr,
-            'codebook': np.array(codebook.detach().cpu())
-        }
+        data_dict = {}
+        data_dict['x_original_arr'] = x_original_arr
+        data_dict['y_original_arr'] = y_original_arr
 
-        # Sanity check for last dimension == sensors
-        if (
-            data_dict['x_original_arr'].shape[-1] == num_sensors and
-            data_dict['y_original_arr'].shape[-1] == num_sensors and
-            data_dict['x_code_ids_all_arr'].shape[-1] == num_sensors and
-            data_dict['x_reverted_all_arr'].shape[-1] == num_sensors and
-            data_dict['y_reverted_all_arr'].shape[-1] == num_sensors
-        ):
-            print('Sensors are last')
+        data_dict['x_code_ids_all_arr'] = np.swapaxes(x_code_ids_all_arr, 1, 2) # order will be [bs x compressed_time x sensors)
+        data_dict['y_code_ids_all_arr'] = np.swapaxes(y_code_ids_all_arr, 1, 2) # order will be [bs x compressed_time x sensors)
+
+        data_dict['x_reverted_all_arr'] = x_reverted_all_arr
+        data_dict['y_reverted_all_arr'] = y_reverted_all_arr
+        data_dict['codebook'] = np.array(codebook.detach().cpu())
+
+        # Check to make sure sensors are last
+        if data_dict['x_original_arr'].shape[-1] == num_sensors:
+            if data_dict['y_original_arr'].shape[-1] == num_sensors:
+                if data_dict['x_code_ids_all_arr'].shape[-1] == num_sensors:
+                    if data_dict['x_reverted_all_arr'].shape[-1] == num_sensors:
+                        if data_dict['y_reverted_all_arr'].shape[-1] == num_sensors:
+                            print('Sensors are last')
+                        else:
+                            pdb.set_trace()
+                    else:
+                        pdb.set_trace()
+                else:
+                    pdb.set_trace()
+            else:
+                pdb.set_trace()
         else:
             pdb.set_trace()
 
@@ -112,9 +103,10 @@ class ExtractData:
 
         return data_dict
 
+
     def extract_data(self):
         device = 'cuda:' + str(args.gpu)
-        vqvae_model = torch.load(args.trained_vqvae_model_path)
+        vqvae_model = torch.load(args.trained_vqvae_model_path, weights_only=False)
         vqvae_model.to(device)
         vqvae_model.eval()
 
@@ -150,7 +142,7 @@ def save_files_forecasting(path, data_dict, mode, save_codebook):
 
     if save_codebook:
         np.save(path + 'codebook.npy', data_dict['codebook'])
-
+        print("Codebook saved!")
 
 def time2codes(revin_data, compression_factor, vqvae_encoder, vqvae_quantizer):
     '''
@@ -236,7 +228,7 @@ if __name__ == '__main__':
     parser.add_argument('--data_path', type=str, default='ETTh1.csv', help='data file')
     parser.add_argument('--features', type=str, default='M',
                         help='forecasting task, options:[M, S, MS]; M:multivariate predict multivariate, S:univariate predict univariate, MS:multivariate predict univariate')
-    parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
+    parser.add_argument('--target', type=str, default='Odom_lin_X', help='target feature in S or MS task')
     parser.add_argument('--freq', type=str, default='h',
                         help='freq for time features encoding, options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], you can also use more detailed freq like 15min or 3h')
 
@@ -286,7 +278,7 @@ if __name__ == '__main__':
         args.device_ids = [int(id_) for id_ in device_ids]
         args.gpu = args.device_ids[0]
 
-    print('Args in experiment:')
+    print('Forecaster Args in experiment:')
     print(args)
 
     Exp = ExtractData

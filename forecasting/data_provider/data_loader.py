@@ -186,8 +186,8 @@ class Dataset_ETT_minute(Dataset):
 
 class Dataset_Custom(Dataset):
     def __init__(self, root_path, flag='train', size=None,
-                 features='S', data_path='ETTh1.csv',
-                 target='OT', scale=True, timeenc=0, freq='h'):
+                 features='S', data_path='odometry_data.csv',
+                 target='Odom_lin_X', scale=True, timeenc=0, freq='h'):
         if size == None:
             self.seq_len = 24 * 4 * 4
             self.label_len = 24 * 4
@@ -214,11 +214,21 @@ class Dataset_Custom(Dataset):
         self.scaler = StandardScaler()
         df_raw = pd.read_csv(os.path.join(self.root_path,
                                           self.data_path))
+        
+        # Ensure 'time' column exists
+        if 'Time' not in df_raw.columns:
+            raise ValueError("Expected 'Time' column in dataset, but not found.")
 
         cols = list(df_raw.columns)
-        cols.remove(self.target)
-        cols.remove('date')
-        df_raw = df_raw[['date'] + cols + [self.target]]
+        if self.target in cols:
+            cols.remove(self.target)
+        else:
+            print(f"Error: Target '{self.target}' not found in columns.")
+
+        cols.remove('Time')
+        df_raw = df_raw[['Time'] + cols + [self.target]]
+
+        # Data splitting (70% train, 10% validation, 20% test)
         num_train = int(len(df_raw) * 0.7)
         num_test = int(len(df_raw) * 0.2)
         num_vali = len(df_raw) - num_train - num_test
@@ -227,12 +237,14 @@ class Dataset_Custom(Dataset):
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
 
+        # Select features
         if self.features == 'M' or self.features == 'MS':
             cols_data = df_raw.columns[1:]
             df_data = df_raw[cols_data]
         elif self.features == 'S':
             df_data = df_raw[[self.target]]
 
+        # Scaling features
         if self.scale:
             train_data = df_data[border1s[0]:border2s[0]]
             self.scaler.fit(train_data.values)
@@ -240,21 +252,23 @@ class Dataset_Custom(Dataset):
         else:
             data = df_data.values
 
-        df_stamp = df_raw[['date']][border1:border2]
-        df_stamp['date'] = pd.to_datetime(df_stamp.date)
+         # Keeping time as a feature in timestamp encoding
+        df_stamp = df_raw[['Time']].iloc[border1:border2]
         if self.timeenc == 0:
-            df_stamp['month'] = df_stamp.date.apply(lambda row: row.month, 1)
-            df_stamp['day'] = df_stamp.date.apply(lambda row: row.day, 1)
-            df_stamp['weekday'] = df_stamp.date.apply(lambda row: row.weekday(), 1)
-            df_stamp['hour'] = df_stamp.date.apply(lambda row: row.hour, 1)
-            data_stamp = df_stamp.drop(['date'], axis=1).values
-        elif self.timeenc == 1:
-            data_stamp = time_features(pd.to_datetime(df_stamp['date'].values), freq=self.freq)
-            data_stamp = data_stamp.transpose(1, 0)
+            df_stamp['Time'] = df_stamp['Time'].astype(float)  # Ensure numerical format
+            data_stamp = df_stamp.values
 
-        self.data_x = data[border1:border2]
-        self.data_y = data[border1:border2]
-        self.data_stamp = data_stamp
+        elif self.timeenc == 1:
+            dates = pd.to_datetime(df_stamp['Time'], unit='s').dt.floor('S')  # Floor datetime to seconds
+            # Ensure it's a DatetimeIndex (avoid Series issues)
+            if isinstance(dates, pd.Series):
+                dates = pd.DatetimeIndex(dates)
+            data_stamp = time_features(dates, freq=self.freq)
+            data_stamp = data_stamp.transpose(1, 0)
+            self.data_x = data[border1:border2]
+            self.data_y = data[border1:border2]
+            self.data_stamp = data_stamp
+        print("Time is featured in timestamp encoding")
 
     def __getitem__(self, index):
         s_begin = index
@@ -270,7 +284,11 @@ class Dataset_Custom(Dataset):
         return seq_x, seq_y, seq_x_mark, seq_y_mark
 
     def __len__(self):
-        return len(self.data_x) - self.seq_len - self.pred_len + 1
+        computed_length = len(self.data_x) - self.seq_len - self.pred_len + 1
+        print("len(self.data_x):", len(self.data_x))
+        print("seq_len:", self.seq_len, "pred_len:", self.pred_len)
+        print("Computed dataset length:", computed_length)
+        return computed_length if computed_length >= 0 else 0
 
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
@@ -542,118 +560,3 @@ class Dataset_Saugeen_Web(Dataset):
 
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
-
-class Dataset_Odometry(Dataset):
-    def __init__(self, root_path, flag='train', size=None,
-                 features='M', data_path=None,
-                 target=0, scale=True, timeenc=0, freq='h'):
-
-        if size is None:
-            self.seq_len = 24 * 4 * 4
-            self.label_len = 24 * 4
-            self.pred_len = 24 * 4
-        else:
-            self.seq_len = size[0]
-            self.label_len = size[1]  # Still needed for interface but not used
-            self.pred_len = size[2]
-
-        assert flag in ['train', 'test', 'val']
-        type_map = {'train': 0, 'val': 1, 'test': 2}
-        self.set_type = type_map[flag]
-
-        self.features = features
-        self.target = target  # Integer index for desired channel
-        self.scale = scale
-        self.timeenc = timeenc
-        self.freq = freq
-
-        self.root_path = root_path
-        self.data_path = data_path
-        self.flag = flag
-
-        self.__read_data__()
-
-    def __read_data__(self):
-        print(f"📂 Odometry Dataset: Reading data for flag={self.flag}")
-        data_fp = os.path.join(self.root_path, f"{self.flag}_data.npy")
-        ts_fp = os.path.join(self.root_path, f"{self.flag}_timestamps.npy")
-
-        if not os.path.exists(data_fp):
-            print(f"❌ Missing data file: {data_fp}")
-        if not os.path.exists(ts_fp):
-            print(f"❌ Missing timestamp file: {ts_fp}")
-
-        train_data = np.load(os.path.join(self.root_path, 'train_data.npy'))[..., self.target:self.target+1]
-        val_data = np.load(os.path.join(self.root_path, 'val_data.npy'))[..., self.target:self.target+1]
-        test_data = np.load(os.path.join(self.root_path, 'test_data.npy'))[..., self.target:self.target+1]
-        train_timestamps = np.load(os.path.join(self.root_path, 'train_timestamps.npy'), allow_pickle=True)
-        val_timestamps = np.load(os.path.join(self.root_path, 'val_timestamps.npy'), allow_pickle=True)
-        test_timestamps = np.load(os.path.join(self.root_path, 'test_timestamps.npy'), allow_pickle=True)
-
-        print("✅ Loaded raw data")
-        print(f"Train shape: {train_data.shape}, Val shape: {val_data.shape}, Test shape: {test_data.shape}")
-        print(f"Train timestamps shape: {train_timestamps.shape}, Val timestamps shape: {val_timestamps.shape}, Test timestamps shape: {test_timestamps.shape}")
-
-        if self.scale:
-            all_data = np.concatenate([train_data, val_data, test_data], axis=0)
-            reshaped = all_data.reshape(-1, all_data.shape[-1])
-            self.scaler = StandardScaler()
-            self.scaler.fit(reshaped)
-
-            train_data = self.scaler.transform(train_data.reshape(-1, train_data.shape[-1])).reshape(train_data.shape)
-            val_data = self.scaler.transform(val_data.reshape(-1, val_data.shape[-1])).reshape(val_data.shape)
-            test_data = self.scaler.transform(test_data.reshape(-1, test_data.shape[-1])).reshape(test_data.shape)
-
-        if self.set_type == 0:
-            self.data_x, self.data_y, self.data_stamp = self.make_full_x_y_data(train_data, train_timestamps)
-        elif self.set_type == 1:
-            self.data_x, self.data_y, self.data_stamp = self.make_full_x_y_data(val_data, val_timestamps)
-        elif self.set_type == 2:
-            self.data_x, self.data_y, self.data_stamp = self.make_full_x_y_data(test_data, test_timestamps)
-
-        print(f"✅ Final dataset size: {len(self.data_x)} examples")
-
-    def make_full_x_y_data(self, array, timestamps):
-        data_x = []
-        data_y = []
-        data_stamp = []
-
-        for instance in range(array.shape[0]):
-            x = array[instance, :self.seq_len, :]
-            y = array[instance, self.seq_len:self.seq_len + self.pred_len, :]
-            ts = timestamps[instance][self.seq_len:self.seq_len + self.pred_len]
-            ts = pd.to_datetime(ts)
-
-            if self.timeenc == 0:
-                df_stamp = pd.DataFrame({"date": ts})
-                df_stamp['month'] = df_stamp.date.apply(lambda row: row.month, 1)
-                df_stamp['day'] = df_stamp.date.apply(lambda row: row.day, 1)
-                df_stamp['weekday'] = df_stamp.date.apply(lambda row: row.weekday(), 1)
-                df_stamp['hour'] = df_stamp.date.apply(lambda row: row.hour, 1)
-                df_stamp['minute'] = df_stamp.date.apply(lambda row: row.minute, 1)
-                df_stamp['minute'] = df_stamp.minute.map(lambda x: x // 15)
-                stamp = df_stamp.drop(['date'], axis=1).values
-            elif self.timeenc == 1:
-                stamp = time_features(ts, freq=self.freq)
-                stamp = stamp.transpose(1, 0)
-
-            data_x.append(x)
-            data_y.append(y)
-            data_stamp.append(stamp)
-
-        return data_x, data_y, data_stamp
-
-    def __getitem__(self, index):
-        return (
-            np.array(self.data_x[index], dtype=np.float32),
-            np.array(self.data_y[index], dtype=np.float32),
-            np.array(self.data_stamp[index], dtype=np.float32),
-            np.array(self.data_stamp[index], dtype=np.float32)
-        )
-
-    def __len__(self):
-        return len(self.data_x)
-
-    def inverse_transform(self, data):
-        return self.scaler.inverse_transform(data)
-

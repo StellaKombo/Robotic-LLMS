@@ -165,10 +165,7 @@ def ltf_stride(data, input_size, output_size, stride):  # want output shape to b
     data_x = []
     data_y = []
 
-    for i in range(0, data.shape[1]):
-        if stop >= data.shape[1]:
-            break
-
+    for i in range(0, data.shape[1] - output_size, stride):
         data_x.append(data[:, start:middle])
         data_y.append(data[:, middle:stop])
 
@@ -179,8 +176,9 @@ def ltf_stride(data, input_size, output_size, stride):  # want output shape to b
     data_x_arr = np.concatenate(data_x, axis=0)
     data_y_arr = np.concatenate(data_y, axis=0)
 
-    data_x_arr = np.expand_dims(data_x_arr, axis=-1)  # add the sensor dimension
-    data_y_arr = np.expand_dims(data_y_arr, axis=-1)  # add the sensor dimension
+    # Now, you should have a shape of (examples, time, sensors)
+    print(f"Shape of data_x (before expansion): {data_x_arr.shape}")
+    print(f"Shape of data_y (before expansion): {data_y_arr.shape}")
 
     return data_x_arr, data_y_arr
 

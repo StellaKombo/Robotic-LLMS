@@ -83,8 +83,8 @@ if __name__ == '__main__':
     parser.add_argument('--data_path', type=str, default='ETTh1.csv', help='data file')
     parser.add_argument('--features', type=str, default='M',
                         help='forecasting task, options:[M, S, MS]; M:multivariate predict multivariate, S:univariate predict univariate, MS:multivariate predict univariate')
-    parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
-    parser.add_argument('--freq', type=str, default='h',
+    parser.add_argument('--target', type=str, default='Odom_lin_X', help='target feature in S or MS task')
+    parser.add_argument('--freq', type=str, default='s',
                         help='freq for time features encoding, options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], you can also use more detailed freq like 15min or 3h')
 
     # forecasting task
@@ -93,7 +93,7 @@ if __name__ == '__main__':
     parser.add_argument('--pred_len', type=int, default=96, help='prediction sequence length')
 
     # Formers
-    parser.add_argument('--enc_in', type=int, default=7, help='encoder input size')  # DLinear with --individual, use this hyperparameter as the number of channels
+    parser.add_argument('--enc_in', type=int, default=13, help='encoder input size')  # DLinear with --individual, use this hyperparameter as the number of channels
     parser.add_argument('--embed', type=str, default='timeF', help='time features encoding, options:[timeF, fixed, learned]')
 
     # optimization
@@ -126,25 +126,29 @@ if __name__ == '__main__':
         args.device_ids = [int(id_) for id_ in device_ids]
         args.gpu = args.device_ids[0]
 
-    print(args.data, args.enc_in)
+    print("Args data:", args.data)
+
     print('CHECK make sure you have the right enc_in')
     print('Weather : 21')
     print('Electricity : 321')
     print('Traffic : 862')
     print('ETTm1, m2, h1, h2 : 7')
+    print('odometry_data : 13')
 
-    #if 'electricity' in args.data_path and args.data == 'custom' and args.enc_in == 321:
-    #    pass
-    #elif 'weather' in args.data_path and args.data == 'custom' and args.enc_in == 21:
-    #    pass
-    #elif 'traffic' in args.data_path and args.data == 'custom' and args.enc_in == 862:
-    #    pass
-    #elif 'ETT' in args.data and args.enc_in == 7:
-    #    pass
-    #else:
-    #    pdb.set_trace()
+    if 'electricity' in args.data_path and args.data == 'custom' and args.enc_in == 321:
+        pass
+    elif 'weather' in args.data_path and args.data == 'custom' and args.enc_in == 21:
+        pass
+    elif 'traffic' in args.data_path and args.data == 'custom' and args.enc_in == 862:
+        pass
+    elif 'ETT' in args.data and args.enc_in == 7:
+        pass
+    elif 'odometry_data' in args.data_path and args.data == 'custom' and args.enc_in == 13:
+        pass
+    else:
+        pdb.set_trace()
 
-    print('Args in experiment:')
+    print('ReVIn Args in experiment:')
     print(args)
 
     Exp = ExtractData
