@@ -1,0 +1,17 @@
+{
+    "vqvae_config": {
+      "model_name": "vqvae",
+      "dataset": "odometry",
+      "pretrained": false,
+      "embedding_dim": 64,
+      "num_embeddings": 256,
+      "compression_factor": 4,
+      "num_training_updates": 10000,
+      "learning_rate": 0.0003,
+      "general_seed": 42,
+      "block_hidden_size": 128,
+      "num_residual_layers": 2,
+      "res_hidden_size": 32,
+      "commitment_cost": 0.25
+    }
+  }
