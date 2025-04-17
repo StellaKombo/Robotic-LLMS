@@ -25,6 +25,9 @@ forecasting/scripts/base.sh
 process_zero_shot_data/scripts/base.sh
 ```
 
+### To view the obtained visual results using the TOTEM with minimal tuning:
+https://drive.google.com/drive/folders/1C680OqGmNbaUKHOPL98cJFoH-RN6oOP0?usp=sharing
+
 ## Cite If You ❤️ TOTEM
 
 ```
